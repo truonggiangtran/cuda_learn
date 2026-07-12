@@ -7,3 +7,4 @@
 build/
 image/ir_image.raw
 image/rgb_image.raw
+vcpkg_installed/
