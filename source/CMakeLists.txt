@@ -6,6 +6,9 @@ add_executable(main
 
 target_link_libraries(main PRIVATE
     image_processing
+    windowscodecs
+    ole32
+    shell32
 )
 
 if(MSVC AND ENABLE_MSVC_DEBUG)

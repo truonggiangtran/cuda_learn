@@ -11,7 +11,7 @@ constexpr float kernelMat[9] = {
 
 __constant__ float d_kernelMat[9];
 template <typename T>
-__device__ T clamp(T value, T minVal, T maxVal) {
+__device__ inline T clamp(T value, T minVal, T maxVal) {
     return max(minVal, min(value, maxVal));
 }
 
@@ -26,6 +26,7 @@ __host__ void cudaMethodRunner(const char* methodName, T kernelFunc, dim3 gridDi
         fprintf(stderr, "Failed to launch %s kernel (error code %s)!\n", methodName, cudaGetErrorString(err));
         exit(EXIT_FAILURE);
     }
+    
     err = cudaDeviceSynchronize();
     if (err != cudaSuccess) {
         fprintf(stderr, "%s kernel failed during execution (error code %s)!\n", methodName, cudaGetErrorString(err));
@@ -36,21 +37,32 @@ __host__ void cudaMethodRunner(const char* methodName, T kernelFunc, dim3 gridDi
     printf("%s kernel execution time: %.3f ms\n", methodName, elapsed.count());
 }
 
+__host__ void cudaMemoryDebug(const unsigned char *devicePtr, size_t size, const char* varName) {
+    unsigned char* hostBuffer = new unsigned char[size];
+    cudaError_t err = cudaMemcpy(hostBuffer, devicePtr, size, cudaMemcpyDeviceToHost);
+    if (err != cudaSuccess) {
+        fprintf(stderr, "Failed to copy %s from device to host (error code %s)!\n", varName, cudaGetErrorString(err));
+        delete[] hostBuffer;
+        exit(EXIT_FAILURE);
+    }
+    printf("data of %s:\n", varName);
+    for (size_t i = 2592; i < 2642; ++i) {
+        printf("%02X ", hostBuffer[i]);
+    }
+    printf("\n");
+    delete[] hostBuffer;
+}
+
 __global__ void greenExtract_kernel(const unsigned char* raw10, unsigned char* gImage, int width, int height, int stride) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
     if (x < width && y < height) {
-        if (y % 2 == 0 && (x % 4 == 1 || x % 4 == 3)) { // Green pixel in Bayer pattern
-            gImage[y * width + x] = raw10[y * stride + (x / 4) * 5 + x % 4];
-        } else if (y % 2 == 1 && (x % 4 == 0 || x % 4 == 2)) { // Green pixel in Bayer pattern
-            gImage[y * width + x] = raw10[(y + 1) * stride + (x / 4) * 5 + x % 4];
+        if ((y % 2 == 0 && x % 2 == 1) || (y % 2 == 1 && x % 2 == 0)) { // Green pixel
+            gImage[y * width + x] = raw10[y * stride + (x / 4) * 5 + (x % 4)];
         } else {
             gImage[y * width + x] = 0; // Not a green pixel
         }
-        // if (x < 30 && y == 0) {
-        //     printf("raw10[%d, %d] = %d, gImage[%d, %d] = %d\n", x, y, raw10[y * stride + (x / 4) * 5 + x % 4], x, y, gImage[y * width + x]);
-        // }
     }
 }
 __global__ void redblueIRExtract_kernel(const unsigned char* raw10, unsigned char* rImage, unsigned char* bImage, unsigned char* irImage, int width, int height, int stride) {
@@ -76,6 +88,8 @@ __global__ void redblueIRExtract_kernel(const unsigned char* raw10, unsigned cha
     }
 
     irImage[y * width + x] = raw10[(2 * y + 1) * stride + (x / 2) * 5 + (x % 2) * 2 + 1]; // IR pixel
+    // if (x < 50 && y  < 5)
+    //     printf("IR pixel at (%d, %d): %u raw10 at (%d, %d): %u\n", x, y, irImage[y * width + x], (x / 2) * 5 + (x % 2) * 2 + 1, (2 * y + 1), raw10[(2 * y + 1) * stride + (x / 2) * 5 + (x % 2) * 2 + 1]);
 
 }
 __global__ void convolution_kernel(const unsigned char* input, unsigned char* output, int width, int height) {
@@ -99,35 +113,50 @@ __global__ void convolution_kernel(const unsigned char* input, unsigned char* ou
     }
     output[y * width + x] = static_cast<unsigned char>(sum);
 }
-__global__ void resize_bilinear_kernel(const unsigned char* red, const unsigned char* blue, unsigned char* ret_red, unsigned char* ret_blue, int inputWidth, int inputHeight) {
+__global__ void bilinear_interpolate_kernel(const unsigned char* red, const unsigned char* blue, unsigned char* dest_red, unsigned char* dest_blue, int width, int height, float scaleX, float scaleY) {
+    // width and height are the dimensions of the destination image
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
-    if (x >= inputWidth || y >= inputHeight) return;
+    if (x >= width || y >= height) return;
 
     // Calculate the corresponding coordinates in the input image
-    float srcX = x / 2.0f;
-    float srcY = y / 2.0f;
-    
-    int x0 = static_cast<int>(floor(srcX));
-    int x1 = max(0, min(x0 + 1, inputWidth - 1));
-    int y0 = static_cast<int>(floor(srcY));
-    int y1 = max(0, min(y0 + 1, inputHeight - 1));
+    if (scaleX == 0 || scaleY == 0) return; // Avoid division by zero
 
-    float xLerp = srcX - x0;
-    float yLerp = srcY - y0;
+    // Calculate the source image dimensions
+    int srcWidth = max(1, static_cast<int>(width / scaleX));
+    int srcHeight = max(1, static_cast<int>(height / scaleY));
 
-    // Bilinear interpolation for red channel
-    float redTop = (1.0f - xLerp) * (1.0f - yLerp) * red[y0 * inputWidth + x0] +
-                   xLerp * (1.0f - yLerp) * red[y0 * inputWidth + x1] +
-                   (1.0f - xLerp) * yLerp * red[y1 * inputWidth + x0] +
-                   xLerp * yLerp * red[y1 * inputWidth + x1];
-    float blueTop = (1.0f - xLerp) * (1.0f - yLerp) * blue[y0 * inputWidth + x0] +
-                    xLerp * (1.0f - yLerp) * blue[y0 * inputWidth + x1] +
-                    (1.0f - xLerp) * yLerp * blue[y1 * inputWidth + x0] +
-                    xLerp * yLerp * blue[y1 * inputWidth + x1];
-    ret_red[y * inputWidth  * 2 + x] = static_cast<unsigned char>(redTop + 0.5f);
-    ret_blue[y * inputWidth  * 2 + x] = static_cast<unsigned char>(blueTop + 0.5f);
+    // Calculate the source coordinates
+    float srcX = (x + 0.5f) / scaleX - 0.5f;
+    float srcY = (y + 0.5f) / scaleY - 0.5f;
+    // Clamp the source coordinates to be within the bounds of the source image
+    srcX = clamp(srcX, 0.0f, static_cast<float>(srcWidth - 1));
+    srcY = clamp(srcY, 0.0f, static_cast<float>(srcHeight - 1));
+
+    // Calculate the integer coordinates of the surrounding pixels
+    int x0 = static_cast<int>(floorf(srcX));
+    int y0 = static_cast<int>(floorf(srcY));
+    int x1 = min(x0 + 1, srcWidth - 1);
+    int y1 = min(y0 + 1, srcHeight - 1);
+
+    // Calculate the weights for interpolation
+    float wx = srcX - x0;
+    float wy = srcY - y0;
+
+    // Perform bilinear interpolation
+    float redVal = (1.0f - wx) * (1.0f - wy) * red[y0 * srcWidth + x0]
+                 + wx * (1.0f - wy) * red[y0 * srcWidth + x1]
+                 + (1.0f - wx) * wy * red[y1 * srcWidth + x0]
+                 + wx * wy * red[y1 * srcWidth + x1];
+
+    float blueVal = (1.0f - wx) * (1.0f - wy) * blue[y0 * srcWidth + x0]
+                  + wx * (1.0f - wy) * blue[y0 * srcWidth + x1]
+                  + (1.0f - wx) * wy * blue[y1 * srcWidth + x0]
+                  + wx * wy * blue[y1 * srcWidth + x1];
+
+    dest_red[y * width + x] = static_cast<unsigned char>(redVal + 0.5f);
+    dest_blue[y * width + x] = static_cast<unsigned char>(blueVal + 0.5f);
 }
 __global__ void combine_rgb_kernel(const unsigned char* red, const unsigned char* green, const unsigned char* blue, unsigned char* rgbImage, int width, int height) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -135,47 +164,81 @@ __global__ void combine_rgb_kernel(const unsigned char* red, const unsigned char
 
     if (x >= width || y >= height) return;
     int idx = (y * width + x) * 3;
-    rgbImage[idx] = red[y * width + x];
+    rgbImage[idx + 2] = red[y * width + x];
     rgbImage[idx + 1] = green[y * width + x];
-    rgbImage[idx + 2] = blue[y * width + x];
+    rgbImage[idx] = blue[y * width + x];
 }
+__global__ void balance_rgb_kernel(unsigned char* rgbImage, int width, int height, float rGain, float gGain, float bGain) {
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
 
+    if (x >= width || y >= height) return;
+
+    int idx = (y * width + x) * 3;
+    rgbImage[idx] = static_cast<unsigned char>(min(255.0f, rgbImage[idx] * rGain));
+    rgbImage[idx + 1] = static_cast<unsigned char>(min(255.0f, rgbImage[idx + 1] * gGain));
+    rgbImage[idx + 2] = static_cast<unsigned char>(min(255.0f, rgbImage[idx + 2] * bGain));
+}
+__global__ void flip_image_kernel(unsigned char* image, int width, int height, int channels) {
+    // Flip image horizontally
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (x >= width || y >= height) return;
+    int idx = (y * width + x) * channels;
+    int mirrorIdx = (width - y - 1) * width * channels + x * channels;
+    for (int c = 0; c < channels; ++c) {
+        unsigned char temp = image[idx + c];
+        image[idx + c] = image[mirrorIdx + c];
+        image[mirrorIdx + c] = temp;
+    }
+}
+__global__ void auto_white_balancing_kernel(unsigned char* rgbImage, int width, int height) {
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (x >= width || y >= height) return;
+    int idx = (y * width + x) * 3;
+
+
+}
 void read_gpu() {
     int deviceCount = 0;
     cudaGetDeviceCount(&deviceCount);
-    
-    printf("Number of GPUs: %d\n", deviceCount);
-    
-    for (int i = 0; i < deviceCount; i++) {
+
+    for (int deviceId = 0; deviceId < deviceCount; ++deviceId) {
         cudaDeviceProp prop;
-        cudaGetDeviceProperties(&prop, i);
-        
-        printf("\n--- GPU %d ---\n", i);
-        printf("Device Name: %s\n", prop.name);
-        printf("Compute Capability: %d.%d\n", prop.major, prop.minor);
-        printf("Total Global Memory: %.2f GB\n", (float)prop.totalGlobalMem / (1024 * 1024 * 1024));
-        printf("Total Constant Memory: %zu KB\n", prop.totalConstMem / 1024);
-        printf("Shared Memory Per Block: %zu KB\n", prop.sharedMemPerBlock / 1024);
-        printf("Registers Per Block: %d\n", prop.regsPerBlock);
-        printf("Max Threads Per Block: %d\n", prop.maxThreadsPerBlock);
-        printf("Max Block Dimensions: (%d, %d, %d)\n", prop.maxThreadsDim[0], prop.maxThreadsDim[1], prop.maxThreadsDim[2]);
-        printf("Max Grid Dimensions: (%d, %d, %d)\n", prop.maxGridSize[0], prop.maxGridSize[1], prop.maxGridSize[2]);
-        printf("Memory Bus Width: %d bits\n", prop.memoryBusWidth);
-        printf("Warp Size: %d\n", prop.warpSize);
-        printf("Concurrent Kernels: %s\n", prop.concurrentKernels ? "Yes" : "No");
-        printf("Integrated: %s\n", prop.integrated ? "Yes" : "No");
-        printf("Can Map Host Memory: %s\n", prop.canMapHostMemory ? "Yes" : "No");
-        printf("Multi-Processor Count: %d\n", prop.multiProcessorCount);
-        printf("Max Texture 1D: %d\n", prop.maxTexture1D);
-        printf("Max Texture 2D: (%d, %d)\n", prop.maxTexture2D[0], prop.maxTexture2D[1]);
-        printf("Max Texture 3D: (%d, %d, %d)\n", prop.maxTexture3D[0], prop.maxTexture3D[1], prop.maxTexture3D[2]);
-        printf("Shared Memory Per Multiprocessor: %zu KB\n", prop.sharedMemPerMultiprocessor / 1024);
-        printf("Regs Per Multiprocessor: %d\n", prop.regsPerMultiprocessor);
-        printf("Max Threads Per Multiprocessor: %d\n", prop.maxThreadsPerMultiProcessor);
-        printf("L2 Cache Size: %d KB\n", prop.l2CacheSize / 1024);
-        printf("global L1 Cache Size: %d KB\n", prop.globalL1CacheSupported);
-        printf("Local L1 Cache Size: %d KB\n", prop.localL1CacheSupported);
-        printf("Managed Memory: %d\n", prop.managedMemory);
+        cudaGetDeviceProperties(&prop, deviceId);
+
+        printf("=== GPU: %s ===\n", prop.name);
+
+        printf("\n--- Architecture ---\n");
+        printf("Compute Capability:      %d.%d\n", prop.major, prop.minor);
+        printf("SM Count:                %d\n", prop.multiProcessorCount);
+        printf("Warp Size:               %d\n", prop.warpSize);
+
+        printf("\n--- Thread Limits ---\n");
+        printf("Max Threads/Block:       %d\n", prop.maxThreadsPerBlock);
+        printf("Max Threads/SM:          %d\n", prop.maxThreadsPerMultiProcessor);
+        printf("Max Warps/SM:            %d\n", prop.maxThreadsPerMultiProcessor / prop.warpSize);
+        printf("Max Block Dim:           (%d, %d, %d)\n",
+               prop.maxThreadsDim[0], prop.maxThreadsDim[1], prop.maxThreadsDim[2]);
+        printf("Max Grid Dim:            (%d, %d, %d)\n",
+               prop.maxGridSize[0], prop.maxGridSize[1], prop.maxGridSize[2]);
+
+        printf("\n--- Memory ---\n");
+        printf("Global Memory:           %zu MB\n", prop.totalGlobalMem / (1024 * 1024));
+        printf("Shared Memory/Block:     %zu KB\n", prop.sharedMemPerBlock / 1024);
+        printf("Shared Memory/SM:        %zu KB\n", prop.sharedMemPerMultiprocessor / 1024);
+        printf("Registers/Block:         %d\n", prop.regsPerBlock);
+        printf("Registers/SM:            %d\n", prop.regsPerMultiprocessor);
+        printf("L2 Cache:                %d KB\n", prop.l2CacheSize / 1024);
+        printf("Memory Bus Width:        %d bits\n", prop.memoryBusWidth);
+
+        printf("\n--- Computed Limits ---\n");
+        printf("Max Concurrent Threads:  %d\n",
+               prop.maxThreadsPerMultiProcessor * prop.multiProcessorCount);
+        printf("Theoretical Bandwidth:   unavailable\n\n");
     }
 }
 
@@ -186,30 +249,18 @@ void checkCudaError(cudaError_t err, const char* msg) {
     }
 }
 
-void debugCudaMemory(const unsigned char* d_ptr, size_t size, const char* varName) {
-    unsigned char* h_ptr = new unsigned char[size];
-    cudaError_t err = cudaMemcpy(h_ptr, d_ptr, size, cudaMemcpyDeviceToHost);
-    checkCudaError(err, "Failed to copy device memory to host for debugging");
-
-    printf("Debugging device memory for %s:\n", varName);
-    for (size_t i = 0; i < size; ++i) {
-        printf("%02X ", h_ptr[i]);
-        if ((i + 1) % 16 == 0) printf("\n");
-    }
-    printf("\n");
-
-    delete[] h_ptr;
-}
-void image_processing(unsigned char* tempBuffer, int width, int height, int stride, unsigned char* irImage, unsigned char* rgbImage) {
+void image_processing(unsigned char* tempBuffer, int width, int height, int stride, unsigned char* irImage, unsigned char* rgbImage, float rGain, float gGain, float bGain) {
     cudaError_t err = cudaSuccess;
-    // Calculate grid and block sizes
-    int blockSize = 256;
-    int gridSizeX = (width + blockSize - 1) / blockSize;
-    int gridSizeY = (height + blockSize - 1) / blockSize;
+
+    constexpr int blockDimX = 16;
+    constexpr int blockDimY = 16;
+    int gridSizeX = (width + blockDimX - 1) / blockDimX;
+    int gridSizeY = (height + blockDimY - 1) / blockDimY;
     int halfWidth = width / 2;
     int halfHeight = height / 2;
-    int rbGridSizeX = (halfWidth + blockSize - 1) / blockSize;
-    int rbGridSizeY = (halfHeight + blockSize - 1) / blockSize;
+    int rbGridSizeX = (halfWidth + blockDimX - 1) / blockDimX;
+    int rbGridSizeY = (halfHeight + blockDimY - 1) / blockDimY;
+
     // Allocate device memory
     unsigned char* d_tempBuffer = nullptr;
     unsigned char* d_irImage = nullptr;
@@ -219,24 +270,23 @@ void image_processing(unsigned char* tempBuffer, int width, int height, int stri
     unsigned char* d_resized_rImage = nullptr;
     unsigned char* d_resized_bImage = nullptr;
     unsigned char* d_rgbImage = nullptr;
-    {
-        err = cudaMalloc((void**)&d_tempBuffer, height * stride);
-        checkCudaError(err, "Failed to allocate device memory for tempBuffer");
-        err = cudaMalloc((void**)&d_irImage, width * height / 4);
-        checkCudaError(err, "Failed to allocate device memory for irImage");
-        err = cudaMalloc((void**)&d_rImage, width * height / 4);
-        checkCudaError(err, "Failed to allocate device memory for rImage");
-        err = cudaMalloc((void**)&d_gImage, width * height);
-        checkCudaError(err, "Failed to allocate device memory for gImage");
-        err = cudaMalloc((void**)&d_bImage, width * height / 4);
-        checkCudaError(err, "Failed to allocate device memory for bImage");
-        err = cudaMalloc((void**)&d_resized_rImage, width * height);
-        checkCudaError(err, "Failed to allocate device memory for resized_rImage");
-        err = cudaMalloc((void**)&d_resized_bImage, width * height);
-        checkCudaError(err, "Failed to allocate device memory for resized_bImage");
-        err = cudaMalloc((void**)&d_rgbImage, width * height * 3);
-        checkCudaError(err, "Failed to allocate device memory for rgbImage");
-    }
+
+    err = cudaMalloc((void**)&d_tempBuffer, height * stride);
+    checkCudaError(err, "Failed to allocate device memory for tempBuffer");
+    err = cudaMalloc((void**)&d_irImage, width * height / 4);
+    checkCudaError(err, "Failed to allocate device memory for irImage");
+    err = cudaMalloc((void**)&d_rImage, width * height / 4);
+    checkCudaError(err, "Failed to allocate device memory for rImage");
+    err = cudaMalloc((void**)&d_gImage, width * height);
+    checkCudaError(err, "Failed to allocate device memory for gImage");
+    err = cudaMalloc((void**)&d_bImage, width * height / 4);
+    checkCudaError(err, "Failed to allocate device memory for bImage");
+    err = cudaMalloc((void**)&d_resized_rImage, width * height);
+    checkCudaError(err, "Failed to allocate device memory for resized_rImage");
+    err = cudaMalloc((void**)&d_resized_bImage, width * height);
+    checkCudaError(err, "Failed to allocate device memory for resized_bImage");
+    err = cudaMalloc((void**)&d_rgbImage, width * height * 3);
+    checkCudaError(err, "Failed to allocate device memory for rgbImage");
 
     err = cudaMemcpy(d_tempBuffer, tempBuffer, height * stride, cudaMemcpyHostToDevice);
     checkCudaError(err, "Failed to copy tempBuffer to device");
@@ -244,31 +294,39 @@ void image_processing(unsigned char* tempBuffer, int width, int height, int stri
     err = cudaMemcpyToSymbol(d_kernelMat, kernelMat, sizeof(kernelMat));
     checkCudaError(err, "Failed to copy kernel matrix to constant memory");
 
-    printf("Starting image processing on GPU...\n");
-    cudaDeviceSynchronize();
+    printf("Grid Size: (%d, %d), Block Size: (%d, %d)\n", gridSizeX, gridSizeY, blockDimX, blockDimY);
+
+    cudaMethodRunner("Green Extraction", greenExtract_kernel, dim3(gridSizeX, gridSizeY), dim3(blockDimX, blockDimY),
+                        d_tempBuffer, d_gImage, width, height, stride);
+
+    // cudaMemoryDebug(d_gImage, width * height * sizeof(unsigned char), "d_gImage");
+    // // Debugging: Print the last 30 bytes of the original image buffer
+    // cudaMemoryDebug(d_tempBuffer, height * stride * sizeof(unsigned char), "d_tempBuffer");
+
+    cudaMethodRunner("Red Blue and IR Extraction", redblueIRExtract_kernel, dim3(rbGridSizeX, rbGridSizeY), dim3(blockDimX, blockDimY),
+                        d_tempBuffer, d_rImage, d_bImage, d_irImage, halfWidth, halfHeight, stride);
+
+    cudaMethodRunner("Convolution Green", convolution_kernel, dim3(gridSizeX, gridSizeY), dim3(blockDimX, blockDimY),
+                        d_gImage, d_gImage, width, height);
+
+    cudaMethodRunner("Convolution Red", convolution_kernel, dim3(rbGridSizeX, rbGridSizeY), dim3(blockDimX, blockDimY),
+                        d_rImage, d_rImage, halfWidth, halfHeight);
+
+    cudaMethodRunner("Convolution Blue", convolution_kernel, dim3(rbGridSizeX, rbGridSizeY), dim3(blockDimX, blockDimY),
+                        d_bImage, d_bImage, halfWidth, halfHeight);
+
+    cudaMethodRunner("Bilinear Interpolation", bilinear_interpolate_kernel, dim3(gridSizeX, gridSizeY), dim3(blockDimX, blockDimY),
+                        d_rImage, d_bImage, d_resized_rImage, d_resized_bImage, width, height, 2.0f, 2.0f);
     
-    // Debug parameters
-#if 1
-    printf("Image dimensions: %d x %d\n", width, height);
-    printf("Stride: %d\n", stride);
-    printf("Grid size for green extraction: (%d, %d)\n", gridSizeX, gridSizeY);
-    printf("Grid size for red/blue extraction: (%d, %d)\n", rbGridSizeX, rbGridSizeY);
-    printf("Block size: %d\n", blockSize);
-#endif
+    cudaMethodRunner("Combine RGB", combine_rgb_kernel, dim3(gridSizeX, gridSizeY), dim3(blockDimX, blockDimY),
+                        d_resized_rImage, d_gImage, d_resized_bImage, d_rgbImage, width, height);
+    cudaMethodRunner("Balance RGB", balance_rgb_kernel, dim3(gridSizeX, gridSizeY), dim3(blockDimX, blockDimY),
+                        d_rgbImage, width, height, rGain, gGain, bGain);
 
-    cudaMethodRunner("Green Extraction", greenExtract_kernel, dim3(gridSizeX, gridSizeY), dim3(blockSize), d_tempBuffer, d_gImage, width, height, stride);
-
-    cudaMethodRunner("Red and Blue Extraction", redblueIRExtract_kernel, dim3(rbGridSizeX, rbGridSizeY), dim3(blockSize), d_tempBuffer, d_rImage, d_bImage, d_irImage, halfWidth, halfHeight, stride);
-
-    cudaMethodRunner("Convolution Green", convolution_kernel, dim3(gridSizeX, gridSizeY), dim3(blockSize), d_gImage, d_gImage, width, height);
-
-    cudaMethodRunner("Convolution Red", convolution_kernel, dim3(rbGridSizeX, rbGridSizeY), dim3(blockSize), d_rImage, d_rImage, halfWidth, halfHeight);
-
-    cudaMethodRunner("Convolution Blue", convolution_kernel, dim3(rbGridSizeX, rbGridSizeY), dim3(blockSize), d_bImage, d_bImage, halfWidth, halfHeight);
-
-    cudaMethodRunner("Resize Bilinear", resize_bilinear_kernel, dim3(rbGridSizeX, rbGridSizeY), dim3(blockSize), d_rImage, d_bImage, d_resized_rImage, d_resized_bImage, halfWidth, halfHeight);
-    
-    cudaMethodRunner("Combine RGB", combine_rgb_kernel, dim3(gridSizeX, gridSizeY), dim3(blockSize), d_resized_rImage, d_gImage, d_resized_bImage, d_rgbImage, width, height);
+    // cudaMethodRunner("Flip RGB Image", flip_image_kernel, dim3(gridSizeX, gridSizeY), dim3(blockDimX, blockDimY),
+    //                     d_rgbImage, width, height, 3);
+    // cudaMethodRunner("Flip IR Image", flip_image_kernel, dim3(gridSizeX, gridSizeY), dim3(blockDimX, blockDimY),
+    //                     d_irImage, halfWidth, halfHeight, 1);
 
     err = cudaMemcpy(irImage, d_irImage, halfWidth * halfHeight * sizeof(unsigned char), cudaMemcpyDeviceToHost);
     checkCudaError(err, "Failed to copy irImage to host");

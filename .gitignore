@@ -5,6 +5,6 @@
 *.cubin
 *.fatbin
 build/
-image/ir_image.raw
-image/rgb_image.raw
+image/ir_image.*
+image/rgb_image.*
 vcpkg_installed/
