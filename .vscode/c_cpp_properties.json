@@ -6,12 +6,14 @@
       "includePath": [
         "${workspaceFolder}",
         "${workspaceFolder}/vcpkg_installed/x64-windows/include/opencv4",
+        "${workspaceFolder}/vcpkg_installed/x64-windows/include/libpng16",
         "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.3/include"
       ],
       "browse": {
         "path": [
           "${workspaceFolder}",
           "${workspaceFolder}/vcpkg_installed/x64-windows/include/opencv4",
+          "${workspaceFolder}/vcpkg_installed/x64-windows/include/libpng16",
           "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.3/include"
         ],
         "limitSymbolsToIncludedHeaders": true

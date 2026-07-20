@@ -1,7 +1,7 @@
 add_subdirectory(image_processing)
 
 add_executable(main
-    main/main.cpp
+    main.cpp
 )
 
 target_link_libraries(main PRIVATE
