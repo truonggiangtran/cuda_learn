@@ -9,6 +9,26 @@ A Windows-focused C++17/CUDA project that processes a bundled RAW10 camera frame
 - PNG output through Windows Imaging Component (WIC)
 - `CameraControl` wrapper around OpenCV video capture
 
+## Processing flow
+
+```mermaid
+flowchart TD
+    Input["RAW10 input<br/>image/frame_6506.raw"] --> Upload["Copy frame to GPU"]
+    Upload --> Green["Extract green channel"]
+    Upload --> RedBlueIR["Extract red, blue, and IR channels"]
+    Green --> GreenFilter["Convolve green channel"]
+    RedBlueIR --> RedFilter["Convolve red channel"]
+    RedBlueIR --> BlueFilter["Convolve blue channel"]
+    RedBlueIR --> IR["IR image"]
+    RedFilter --> Interpolate["Bilinear interpolation"]
+    BlueFilter --> Interpolate
+    GreenFilter --> Compose["Compose RGB image"]
+    Interpolate --> Compose
+    Compose --> Gain["Apply RGB gains"]
+    Gain --> RGB["rgb_image.png<br/>2592 × 1944"]
+    IR --> IROutput["ir_image.png<br/>1296 × 972"]
+```
+
 ## Requirements
 
 - Windows
