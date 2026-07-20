@@ -14,11 +14,13 @@ A Windows-focused C++17/CUDA project that processes a bundled RAW10 camera frame
 The input is a 2592 × 1944 RAW10 frame stored at `image/frame_6506.raw`. Each group of four pixels occupies five bytes; the application reads the packed rows with a 16-byte-aligned stride. The current frame layout uses a colour-plus-IR mosaic: green samples are extracted at full resolution, while red, blue, and IR samples are extracted at half resolution before RGB reconstruction.
 
 Pixel layout (G = green, R = red, B = blue, Ir = infrared):
+```
 R   G    B    G   R    G    B    G
 G   Ir   G    Ir  G    Ir   G    Ir
 B   G    R    G   B    G    R    G
 G   Ir   G    Ir  G    Ir   G    Ir
 R   G    B    G   R    G    B    G
+```
 MIPI CSI-2 RAW10 packing:
 ```
 Byte 0:  G0[9:2] | Byte 1: G1[9:2] | Byte 2: G2[9:2] | Byte 3: G3[9:2] | Byte 4: G0[1:0] G1[1:0] G2[1:0] G3[1:0]
