@@ -2,7 +2,9 @@
 #include <chrono>
 #include <cstdio>
 #include <algorithm>
+#include "image_processing.h"
 
+// constexpr int TILE_SIZE = 16;
 constexpr float kernelMat[9] = {
     0.00f, 0.25f, 0.00f,
     0.25f, 1.00f, 0.25f,
@@ -193,15 +195,15 @@ __global__ void flip_image_kernel(unsigned char* image, int width, int height, i
         image[mirrorIdx + c] = temp;
     }
 }
-__global__ void auto_white_balancing_kernel(unsigned char* rgbImage, int width, int height) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
+// __global__ void auto_white_balancing_kernel(unsigned char* rgbImage, int width, int height) {
+//     int x = blockIdx.x * blockDim.x + threadIdx.x;
+//     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
-    if (x >= width || y >= height) return;
-    int idx = (y * width + x) * 3;
+//     if (x >= width || y >= height) return;
+//     int idx = (y * width + x) * 3;
 
 
-}
+// }
 void read_gpu() {
     int deviceCount = 0;
     cudaGetDeviceCount(&deviceCount);
