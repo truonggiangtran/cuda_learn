@@ -1,12 +1,12 @@
 # GPU/NPU CUDA Image Processing
 
-A Windows-focused C++17/CUDA project that processes a bundled RAW10 camera frame on the GPU. The `main` executable extracts IR and colour channels, interpolates and combines them into an RGB image, applies per-channel gains, and writes PNG outputs.
+A Windows- and Linux-compatible C++17/CUDA project that processes a bundled RAW10 camera frame on the GPU. The `main` executable extracts IR and colour channels, interpolates and combines them into an RGB image, applies per-channel gains, and writes PNG outputs.
 
 ## Features
 
 - CUDA RAW10 processing for the bundled 2592 × 1944 frame
 - GPU kernels for green, red/blue, and IR extraction; convolution; bilinear interpolation; RGB composition; and gain adjustment
-- PNG output through Windows Imaging Component (WIC)
+- PNG output through Windows Imaging Component (WIC) on Windows and OpenCV on Linux
 - `CameraControl` wrapper around OpenCV video capture
 
 ## RAW10 pixel format
@@ -48,9 +48,9 @@ flowchart TD
 
 ## Requirements
 
-- Windows
+- Windows or Linux
 - CMake 3.18 or later
-- A C++17-capable Visual Studio/MSVC installation
+- A C++17-capable compiler (Visual Studio/MSVC on Windows, GCC or Clang on Linux)
 - CUDA Toolkit and a CUDA-capable NVIDIA GPU
 - [vcpkg](https://github.com/microsoft/vcpkg) with the `opencv` dependency installed
 
@@ -60,13 +60,23 @@ By default, CUDA targets are compiled for Blackwell (`sm_120`). For another supp
 
 ## Build
 
-In a Developer PowerShell for Visual Studio, configure and build the Debug executable:
+On Windows, in a Developer PowerShell for Visual Studio, configure and build the Debug executable:
 
 ```powershell
 $env:VCPKG_ROOT = "C:\path\to\vcpkg"
 cmake -S . -B build
 cmake --build build --config Debug
 ```
+
+On Linux, configure and build with the native generator:
+
+```bash
+export VCPKG_ROOT=/path/to/vcpkg
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build
+```
+
+CMake detects the target platform automatically. It links Windows Imaging Component and Shell APIs on Windows, and OpenCV's PNG encoder on Linux.
 
 For a non-Blackwell GPU, use a CUDA architecture appropriate for your hardware:
 
@@ -83,6 +93,12 @@ Run the program from the repository root so it can locate `image/frame_6506.raw`
 
 ```powershell
 .\build\source\Debug\main.exe
+```
+
+On Linux (with a single-config generator):
+
+```bash
+./build/source/main
 ```
 
 Optional arguments set red, green, and blue gains:
@@ -102,7 +118,7 @@ The program prints GPU information and per-kernel timings, then creates:
 - `image/ir_image.png` — 1296 × 972 grayscale IR image
 - `image/rgb_image.png` — 2592 × 1944 RGB image
 
-It also asks Windows to open both files with their default associated application.
+On Windows, it also asks the operating system to open both files with their default associated application.
 
 ## Project layout
 

@@ -6,10 +6,19 @@ add_executable(main
 
 target_link_libraries(main PRIVATE
     image_processing
-    windowscodecs
-    ole32
-    shell32
 )
+
+if(GPU_NPU_PLATFORM_WINDOWS)
+    target_link_libraries(main PRIVATE
+        windowscodecs
+        ole32
+        shell32
+    )
+elseif(GPU_NPU_PLATFORM_LINUX)
+    target_link_libraries(main PRIVATE
+        ${OpenCV_LIBS}
+    )
+endif()
 
 if(MSVC AND ENABLE_MSVC_DEBUG)
     target_compile_definitions(main PRIVATE

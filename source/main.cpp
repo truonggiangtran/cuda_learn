@@ -3,11 +3,18 @@
 #include <iostream>
 #include <string>
 #include <memory_resource>
+#if defined(_WIN32)
 #include <wincodec.h>
 #include <shellapi.h>
 
+#elif defined(__linux__)
+#include <opencv2/core/mat.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
+#endif
 namespace {
 
+#if defined(_WIN32)
 bool save_png_wic(const std::filesystem::path& filePath,
                   const unsigned char* data,
                   int width,
@@ -151,6 +158,28 @@ bool open_with_default_app(const std::filesystem::path& filePath) {
     return reinterpret_cast<INT_PTR>(result) > 32;
 }
 
+#elif defined(__linux__)
+bool save_png_opencv(const std::filesystem::path& filePath,
+                     const unsigned char* data,
+                     int width,
+                     int height,
+                     int strideBytes,
+                     int channels) {
+    if (data == nullptr || width <= 0 || height <= 0 || strideBytes <= 0) {
+        return false;
+    }
+
+    const int type = channels == 1 ? CV_8UC1 : CV_8UC3;
+    const cv::Mat image(height, width, type, const_cast<unsigned char*>(data), strideBytes);
+    if (channels == 1) {
+        return cv::imwrite(filePath.string(), image);
+    }
+
+    cv::Mat bgrImage;
+    cv::cvtColor(image, bgrImage, cv::COLOR_RGB2BGR);
+    return cv::imwrite(filePath.string(), bgrImage);
+}
+#endif
 } // namespace
 
 constexpr int IMAGE_WIDTH = 2592;
@@ -194,32 +223,51 @@ int main(int argc, char** argv) {
     std::filesystem::path irOutputFile = outputDir / "ir_image.png";
     std::filesystem::path rgbOutputFile = outputDir / "rgb_image.png";
 
-    if (!save_png_wic(irOutputFile,
-                      irImage.data(),
-                      IMAGE_WIDTH / 2,
-                      IMAGE_HEIGHT / 2,
-                      IMAGE_WIDTH / 2,
-                      GUID_WICPixelFormat8bppGray)) {
+#if defined(_WIN32)
+    const bool irSaved = save_png_wic(irOutputFile,
+                                      irImage.data(),
+                                      IMAGE_WIDTH / 2,
+                                      IMAGE_HEIGHT / 2,
+                                      IMAGE_WIDTH / 2,
+                                      GUID_WICPixelFormat8bppGray);
+    const bool rgbSaved = save_png_wic(rgbOutputFile,
+                                       rgbImage.data(),
+                                       IMAGE_WIDTH,
+                                       IMAGE_HEIGHT,
+                                       IMAGE_WIDTH * 3,
+                                       GUID_WICPixelFormat24bppRGB);
+#elif defined(__linux__)
+    const bool irSaved = save_png_opencv(irOutputFile,
+                                         irImage.data(),
+                                         IMAGE_WIDTH / 2,
+                                         IMAGE_HEIGHT / 2,
+                                         IMAGE_WIDTH / 2,
+                                         1);
+    const bool rgbSaved = save_png_opencv(rgbOutputFile,
+                                          rgbImage.data(),
+                                          IMAGE_WIDTH,
+                                          IMAGE_HEIGHT,
+                                          IMAGE_WIDTH * 3,
+                                          3);
+#endif
+
+    if (!irSaved) {
         std::cerr << "Failed to write IR PNG file." << std::endl;
         return 1;
     }
 
-    if (!save_png_wic(rgbOutputFile,
-                      rgbImage.data(),
-                      IMAGE_WIDTH,
-                      IMAGE_HEIGHT,
-                      IMAGE_WIDTH * 3,
-                      GUID_WICPixelFormat24bppRGB)) {
+    if (!rgbSaved) {
         std::cerr << "Failed to write RGB PNG file." << std::endl;
         return 1;
     }
-
+#if defined(_WIN32)
     if (!open_with_default_app(irOutputFile)) {
         std::cerr << "Warning: failed to open IR image in default viewer." << std::endl;
     }
     if (!open_with_default_app(rgbOutputFile)) {
         std::cerr << "Warning: failed to open RGB image in default viewer." << std::endl;
     }
+#endif
 
     return 0;
 }
