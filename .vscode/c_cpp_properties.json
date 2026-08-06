@@ -5,26 +5,53 @@
       "name": "Win32",
       "includePath": [
         "${workspaceFolder}",
-        "${workspaceFolder}/vcpkg_installed/x64-windows/include/opencv4",
-        "${workspaceFolder}/vcpkg_installed/x64-windows/include/libpng16",
+        "${workspaceFolder}/source/image_processing",
+        "${workspaceFolder}/vcpkg_installed/x64-windows/include",
         "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.3/include"
       ],
       "browse": {
         "path": [
           "${workspaceFolder}",
-          "${workspaceFolder}/vcpkg_installed/x64-windows/include/opencv4",
-          "${workspaceFolder}/vcpkg_installed/x64-windows/include/libpng16",
+          "${workspaceFolder}/source/image_processing",
+          "${workspaceFolder}/vcpkg_installed/x64-windows/include",
           "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.3/include"
         ],
         "limitSymbolsToIncludedHeaders": true
       },
       "defines": [
+        "_WIN32",
         "__CUDACC__"
       ],
       "compilerPath": "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.3/bin/nvcc.exe",
       "cStandard": "c17",
-      "cppStandard": "c++20",
+      "cppStandard": "c++17",
       "intelliSenseMode": "windows-msvc-x64"
+    },
+    {
+      "name": "Linux",
+      "includePath": [
+        "${workspaceFolder}",
+        "${workspaceFolder}/source/image_processing",
+        "/usr/local/cuda/include",
+        "${workspaceFolder}/vcpkg_installed/x64-linux/include"
+      ],
+      "browse": {
+        "path": [
+          "${workspaceFolder}",
+          "${workspaceFolder}/source/image_processing",
+          "/usr/local/cuda/include",
+          "${workspaceFolder}/vcpkg_installed/x64-linux/include"
+        ],
+        "limitSymbolsToIncludedHeaders": true
+      },
+      "defines": [
+        "__linux__",
+        "__CUDACC__"
+      ],
+      "compilerPath": "/usr/local/cuda/bin/nvcc",
+      "cStandard": "c17",
+      "cppStandard": "c++17",
+      "intelliSenseMode": "linux-gcc-x64"
     }
   ]
 }
