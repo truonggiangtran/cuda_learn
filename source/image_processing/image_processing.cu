@@ -166,9 +166,16 @@ __global__ void combine_rgb_kernel(const unsigned char* red, const unsigned char
 
     if (x >= width || y >= height) return;
     int idx = (y * width + x) * 3;
+    // Combine the R, G, B channels into a single RGB image. The order of channels in the output RGB image is platform-dependent.
+#if (WIN32)
+    rgbImage[idx + 2] = red[y * width + x];
+    rgbImage[idx + 1] = green[y * width + x];
+    rgbImage[idx] = blue[y * width + x];
+#elif (__linux__)
     rgbImage[idx] = red[y * width + x];
     rgbImage[idx + 1] = green[y * width + x];
     rgbImage[idx + 2] = blue[y * width + x];
+#endif
 }
 __global__ void balance_rgb_kernel(unsigned char* rgbImage, int width, int height, float rGain, float gGain, float bGain) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
