@@ -2,7 +2,10 @@
 
 ## Testing
 
-- If can't run cmake, run `vcvars64.bat` first to set up the environment. (Need to be done only once per terminal session, `vcvars64.bat` is located in `C:\Program Files (x86)\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build` and added to PATH by default.)
+- On Windows, if CMake cannot locate MSVC, run `vcvars64.bat` first. It is located in `C:\Program Files (x86)\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build` and only needs to run once per terminal session.
+- On Linux, select the intended CUDA compiler before configuring: `export CUDACXX=/usr/local/cuda/bin/nvcc`. Run CMake with `--fresh` when changing CUDA versions, because CMake caches the CUDA compiler per build directory.
+- For Blackwell GPUs such as the RTX 5070, verify `nvcc --version` reports CUDA Toolkit 12.8 or later before configuring with the default `sm_120` architecture.
+- Configure Linux builds with the vcpkg toolchain and compile with `cmake --build build --parallel`.
 - Run relevant existing tests before and after changes when practical.
 - Write tests for new behavior.
 - Never delete or weaken tests to make code pass.

@@ -52,11 +52,11 @@ flowchart TD
 - CMake 3.18 or later
 - A C++17-capable compiler (Visual Studio/MSVC on Windows, GCC or Clang on Linux)
 - CUDA Toolkit and a CUDA-capable NVIDIA GPU
-- [vcpkg](https://github.com/microsoft/vcpkg) with the `opencv` dependency installed
+- [vcpkg](https://github.com/microsoft/vcpkg) with the manifest dependencies installed
 
-The project uses the vcpkg toolchain automatically when the `VCPKG_ROOT` environment variable is set. `vcpkg.json` pins OpenCV to version 4.12.0 or later.
+The project uses the vcpkg toolchain automatically when the `VCPKG_ROOT` environment variable is set. `vcpkg.json` installs the OpenCV 4 PNG support used by Linux builds.
 
-By default, CUDA targets are compiled for Blackwell (`sm_120`). For another supported GPU architecture, disable that option and specify your architecture during configuration.
+By default, CUDA targets are compiled for Blackwell (`sm_120`). Blackwell GeForce GPUs, including the RTX 5070, require CUDA Toolkit 12.8 or later; CUDA 13.3 is supported. For another supported GPU architecture, disable that option and specify your architecture during configuration.
 
 ## Build
 
@@ -68,24 +68,35 @@ cmake -S . -B build
 cmake --build build --config Debug
 ```
 
-On Linux, configure and build with the native generator:
+On Linux, use CUDA Toolkit 12.8 or later for Blackwell GPUs. The following selects the CUDA Toolkit installed at `/usr/local/cuda` (CUDA 13.3 in the current development environment), uses vcpkg, and rebuilds CMake's compiler cache:
 
 ```bash
 export VCPKG_ROOT=/path/to/vcpkg
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build
+export CUDA_HOME=/usr/local/cuda
+export CUDACXX="$CUDA_HOME/bin/nvcc"
+export PATH="$CUDA_HOME/bin:$PATH"
+
+cmake --fresh -S . -B build \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_CUDA_COMPILER:FILEPATH="$CUDACXX" \
+  -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+cmake --build build --parallel
 ```
 
-CMake detects the target platform automatically. It links Windows Imaging Component and Shell APIs on Windows, and OpenCV's PNG encoder on Linux.
+CMake detects the target platform automatically. It links Windows Imaging Component and Shell APIs on Windows, and OpenCV's PNG encoder on Linux. CMake caches its CUDA compiler per build directory; use `--fresh` whenever changing CUDA versions. Confirm the selected compiler with `rg 'CMAKE_CUDA_COMPILER' build/CMakeCache.txt`.
 
-For a non-Blackwell GPU, use a CUDA architecture appropriate for your hardware:
+For a non-Blackwell GPU on Linux, use a CUDA architecture appropriate for your hardware:
 
-```powershell
-cmake -S . -B build -DENABLE_BLACKWELL_ARCH=OFF -DCMAKE_CUDA_ARCHITECTURES=<architecture>
-cmake --build build --config Debug
+```bash
+cmake --fresh -S . -B build \
+  -DCMAKE_CUDA_COMPILER:FILEPATH="$CUDACXX" \
+  -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+  -DENABLE_BLACKWELL_ARCH=OFF \
+  -DCMAKE_CUDA_ARCHITECTURES=<architecture>
+cmake --build build --parallel
 ```
 
-For example, replace `<architecture>` with `86` for an Ampere RTX 30-series GPU. If CMake cannot locate MSVC, run `vcvars64.bat` from the Visual Studio Build Tools installation before configuring.
+For example, replace `<architecture>` with `86` for an Ampere RTX 30-series GPU. An RTX 5070 uses architecture `120`; keep the default `ENABLE_BLACKWELL_ARCH=ON` and ensure `nvcc --version` reports CUDA 12.8 or later. On Windows, add the same two architecture definitions to the first CMake configuration command. If CMake cannot locate MSVC, run `vcvars64.bat` from the Visual Studio Build Tools installation before configuring.
 
 ## Run
 
