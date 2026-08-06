@@ -1,4 +1,4 @@
-# GPU/NPU CUDA Image Processing
+# CUDA Image Processing
 
 A Windows- and Linux-compatible C++17/CUDA project that processes a bundled RAW10 camera frame on the GPU. The `main` executable extracts IR and colour channels, interpolates and combines them into an RGB image, applies per-channel gains, and writes PNG outputs.
 
@@ -7,7 +7,6 @@ A Windows- and Linux-compatible C++17/CUDA project that processes a bundled RAW1
 - CUDA RAW10 processing for the bundled 2592 × 1944 frame
 - GPU kernels for green, red/blue, and IR extraction; convolution; bilinear interpolation; RGB composition; and gain adjustment
 - PNG output through Windows Imaging Component (WIC) on Windows and OpenCV on Linux
-- `CameraControl` wrapper around OpenCV video capture
 
 ## RAW10 pixel format
 

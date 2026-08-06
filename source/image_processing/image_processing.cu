@@ -1,5 +1,5 @@
 #include <cuda_runtime.h>
-#include <chrono>
+// #include <chrono>
 #include <cstdio>
 #include <algorithm>
 #include "image_processing.h"
@@ -11,7 +11,6 @@ constexpr float kernelMat[9] = {
     0.00f, 0.25f, 0.00f
 };
 
-__constant__ float d_kernelMat[9];
 template <typename T>
 __device__ inline T clamp(T value, T minVal, T maxVal) {
     return max(minVal, min(value, maxVal));
@@ -20,23 +19,24 @@ __device__ inline T clamp(T value, T minVal, T maxVal) {
 template <typename T, typename... Args>
 __host__ void cudaMethodRunner(const char* methodName, T kernelFunc, dim3 gridDim, dim3 blockDim, Args&&... args) {
     cudaError_t err = cudaSuccess;
+    cudaEvent_t startEvent, stopEvent;
 
-    auto start = std::chrono::high_resolution_clock::now();
+    cudaEventCreate(&startEvent);
+    cudaEventCreate(&stopEvent);
+
+    cudaEventRecord(startEvent, 0);
     kernelFunc<<<gridDim, blockDim>>>(std::forward<decltype(args)>(args)...);
     err = cudaGetLastError();
     if (err != cudaSuccess) {
         fprintf(stderr, "Failed to launch %s kernel (error code %s)!\n", methodName, cudaGetErrorString(err));
         exit(EXIT_FAILURE);
     }
-    
-    err = cudaDeviceSynchronize();
-    if (err != cudaSuccess) {
-        fprintf(stderr, "%s kernel failed during execution (error code %s)!\n", methodName, cudaGetErrorString(err));
-        exit(EXIT_FAILURE);
-    }
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::milli> elapsed = end - start;
-    printf("%s kernel execution time: %.3f ms\n", methodName, elapsed.count());
+
+    cudaEventRecord(stopEvent, 0);
+    cudaEventSynchronize(stopEvent);
+    float milliseconds = 0;
+    cudaEventElapsedTime(&milliseconds, startEvent, stopEvent);
+    printf("%s kernel execution time: %.3f ms\n", methodName, milliseconds);
 }
 
 __host__ void cudaMemoryDebug(const unsigned char *devicePtr, size_t size, const char* varName) {
@@ -90,28 +90,16 @@ __global__ void redblueIRExtract_kernel(const unsigned char* raw10, unsigned cha
     }
 
     irImage[y * width + x] = raw10[(2 * y + 1) * stride + (x / 2) * 5 + (x % 2) * 2 + 1]; // IR pixel
-    // if (x < 50 && y  < 5)
-    //     printf("IR pixel at (%d, %d): %u raw10 at (%d, %d): %u\n", x, y, irImage[y * width + x], (x / 2) * 5 + (x % 2) * 2 + 1, (2 * y + 1), raw10[(2 * y + 1) * stride + (x / 2) * 5 + (x % 2) * 2 + 1]);
-
 }
-__global__ void convolution_kernel(const unsigned char* input, unsigned char* output, int width, int height) {
+__global__ void convolution_kernel(const unsigned char* input, unsigned char* output, const float* kernel, int width, int height) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
     float sum = 0.0f;
 
     if (x >= width || y >= height) return;
 
-    // sum =   kernelMat[0] * input[max(0, min(y - 1, height - 1)) * width + max(0, min(x - 1, width - 1))] + 
-    //         kernelMat[1] * input[max(0, min(y - 1, height - 1)) * width + max(0, min(x, width - 1))] + 
-    //         kernelMat[2] * input[max(0, min(y - 1, height - 1)) * width + max(0, min(x + 1, width - 1))] + 
-    //         kernelMat[3] * input[max(0, min(y, height - 1)) * width + max(0, min(x - 1, width - 1))] + 
-    //         kernelMat[4] * input[max(0, min(y, height - 1)) * width + max(0, min(x, width - 1))] + 
-    //         kernelMat[5] * input[max(0, min(y, height - 1)) * width + max(0, min(x + 1, width - 1))] + 
-    //         kernelMat[6] * input[max(0, min(y + 1, height - 1)) * width + max(0, min(x - 1, width - 1))] + 
-    //         kernelMat[7] * input[max(0, min(y + 1, height - 1)) * width + max(0, min(x, width - 1))] + 
-    //         kernelMat[8] * input[max(0, min(y + 1, height - 1)) * width + max(0, min(x + 1, width - 1))];
     for (int i = 0; i < 9; ++i) {
-        sum += d_kernelMat[i] * input[clamp(y + (i / 3) - 1, 0, height - 1) * width + clamp(x + (i % 3) - 1, 0, width - 1)];
+        sum += kernel[i] * input[clamp(y + (i / 3) - 1, 0, height - 1) * width + clamp(x + (i % 3) - 1, 0, width - 1)];
     }
     output[y * width + x] = static_cast<unsigned char>(sum);
 }
@@ -202,15 +190,18 @@ __global__ void flip_image_kernel(unsigned char* image, int width, int height, i
         image[mirrorIdx + c] = temp;
     }
 }
-// __global__ void auto_white_balancing_kernel(unsigned char* rgbImage, int width, int height) {
-//     int x = blockIdx.x * blockDim.x + threadIdx.x;
-//     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
-//     if (x >= width || y >= height) return;
-//     int idx = (y * width + x) * 3;
+// Kernel for auto white balancing (placeholder)
+__global__ void auto_white_balancing_kernel(unsigned char* rgbImage, int width, int height) {
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
 
+    if (x >= width || y >= height) return;
+    int idx = (y * width + x) * 3;
 
-// }
+    // Calculate the average of the R, G, B channels
+
+}
 void read_gpu() {
     int deviceCount = 0;
     cudaGetDeviceCount(&deviceCount);
@@ -260,7 +251,6 @@ void checkCudaError(cudaError_t err, const char* msg) {
 
 void image_processing(unsigned char* tempBuffer, int width, int height, int stride, unsigned char* irImage, unsigned char* rgbImage, float rGain, float gGain, float bGain) {
     cudaError_t err = cudaSuccess;
-
     constexpr int blockDimX = 16;
     constexpr int blockDimY = 16;
     int gridSizeX = (width + blockDimX - 1) / blockDimX;
@@ -279,6 +269,7 @@ void image_processing(unsigned char* tempBuffer, int width, int height, int stri
     unsigned char* d_resized_rImage = nullptr;
     unsigned char* d_resized_bImage = nullptr;
     unsigned char* d_rgbImage = nullptr;
+    float* d_kernelMat = nullptr;
 
     err = cudaMalloc((void**)&d_tempBuffer, height * stride);
     checkCudaError(err, "Failed to allocate device memory for tempBuffer");
@@ -300,8 +291,10 @@ void image_processing(unsigned char* tempBuffer, int width, int height, int stri
     err = cudaMemcpy(d_tempBuffer, tempBuffer, height * stride, cudaMemcpyHostToDevice);
     checkCudaError(err, "Failed to copy tempBuffer to device");
 
-    err = cudaMemcpyToSymbol(d_kernelMat, kernelMat, sizeof(kernelMat));
-    checkCudaError(err, "Failed to copy kernel matrix to constant memory");
+    err = cudaMalloc((void**)&d_kernelMat, sizeof(kernelMat));
+    checkCudaError(err, "Failed to allocate device memory for kernel matrix");
+    err = cudaMemcpy(d_kernelMat, kernelMat, sizeof(kernelMat), cudaMemcpyHostToDevice);
+    checkCudaError(err, "Failed to copy kernel matrix to device");
 
     printf("Grid Size: (%d, %d), Block Size: (%d, %d)\n", gridSizeX, gridSizeY, blockDimX, blockDimY);
 
@@ -316,13 +309,13 @@ void image_processing(unsigned char* tempBuffer, int width, int height, int stri
                         d_tempBuffer, d_rImage, d_bImage, d_irImage, halfWidth, halfHeight, stride);
 
     cudaMethodRunner("Convolution Green", convolution_kernel, dim3(gridSizeX, gridSizeY), dim3(blockDimX, blockDimY),
-                        d_gImage, d_gImage, width, height);
+                        d_gImage, d_gImage, d_kernelMat, width, height);
 
     cudaMethodRunner("Convolution Red", convolution_kernel, dim3(rbGridSizeX, rbGridSizeY), dim3(blockDimX, blockDimY),
-                        d_rImage, d_rImage, halfWidth, halfHeight);
+                        d_rImage, d_rImage, d_kernelMat, halfWidth, halfHeight);
 
     cudaMethodRunner("Convolution Blue", convolution_kernel, dim3(rbGridSizeX, rbGridSizeY), dim3(blockDimX, blockDimY),
-                        d_bImage, d_bImage, halfWidth, halfHeight);
+                        d_bImage, d_bImage, d_kernelMat, halfWidth, halfHeight);
 
     cudaMethodRunner("Bilinear Interpolation", bilinear_interpolate_kernel, dim3(gridSizeX, gridSizeY), dim3(blockDimX, blockDimY),
                         d_rImage, d_bImage, d_resized_rImage, d_resized_bImage, width, height, 2.0f, 2.0f);
@@ -331,11 +324,6 @@ void image_processing(unsigned char* tempBuffer, int width, int height, int stri
                         d_resized_rImage, d_gImage, d_resized_bImage, d_rgbImage, width, height);
     cudaMethodRunner("Balance RGB", balance_rgb_kernel, dim3(gridSizeX, gridSizeY), dim3(blockDimX, blockDimY),
                         d_rgbImage, width, height, rGain, gGain, bGain);
-
-    // cudaMethodRunner("Flip RGB Image", flip_image_kernel, dim3(gridSizeX, gridSizeY), dim3(blockDimX, blockDimY),
-    //                     d_rgbImage, width, height, 3);
-    // cudaMethodRunner("Flip IR Image", flip_image_kernel, dim3(gridSizeX, gridSizeY), dim3(blockDimX, blockDimY),
-    //                     d_irImage, halfWidth, halfHeight, 1);
 
     err = cudaMemcpy(irImage, d_irImage, halfWidth * halfHeight * sizeof(unsigned char), cudaMemcpyDeviceToHost);
     checkCudaError(err, "Failed to copy irImage to host");
