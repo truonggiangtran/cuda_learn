@@ -12,7 +12,7 @@ if(DEFINED ENV{VCPKG_ROOT} AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
     )
 endif()
 
-project(gpu_npu LANGUAGES CXX CUDA)
+project(gpu LANGUAGES CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CUDA_STANDARD 17)
@@ -23,17 +23,17 @@ option(ENABLE_MSVC_DEBUG "Enable extra MSVC/CUDA debug flags for Debug config" O
 option(ENABLE_BLACKWELL_ARCH "Build CUDA kernels for Blackwell GPUs (sm_120)" ON)
 
 if(WIN32)
-    set(GPU_NPU_PLATFORM_WINDOWS ON)
+    set(GPU_PLATFORM_WINDOWS ON)
     message(STATUS "Configuring Windows build")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    set(GPU_NPU_PLATFORM_LINUX ON)
+    set(GPU_PLATFORM_LINUX ON)
     message(STATUS "Configuring Linux build")
 else()
     message(FATAL_ERROR "Unsupported platform: ${CMAKE_SYSTEM_NAME}. Only Windows and Linux are supported.")
 endif()
 
 find_package(CUDAToolkit REQUIRED)
-if(GPU_NPU_PLATFORM_LINUX)
+if(GPU_PLATFORM_LINUX)
     find_package(OpenCV QUIET COMPONENTS imgcodecs imgproc)
 
     if(NOT OpenCV_FOUND AND DEFINED VCPKG_INSTALLED_DIR)
