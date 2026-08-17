@@ -1,17 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
 
-# This project uses vcpkg to manage dependencies. If you have not already done so, please install vcpkg and integrate it with CMake:
-#print VCPKG_ROOT and CMAKE_TOOLCHAIN_FILE to help users debug issues with vcpkg integration.
-message(STATUS "VCPKG_ROOT: $ENV{VCPKG_ROOT}")
-message(STATUS "CMAKE_TOOLCHAIN_FILE: ${CMAKE_TOOLCHAIN_FILE}")
-
-if(DEFINED ENV{VCPKG_ROOT} AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
-    set(CMAKE_TOOLCHAIN_FILE
-        "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
-        CACHE FILEPATH "Path to the vcpkg toolchain file"
-    )
-endif()
-
 project(gpu LANGUAGES CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -33,14 +21,8 @@ if(BUILD_CAMERA_CONTROL)
 endif()
 
 find_package(OpenCV QUIET COMPONENTS ${GPU_OPENCV_COMPONENTS})
-
-if(NOT OpenCV_FOUND AND DEFINED VCPKG_INSTALLED_DIR)
-    find_package(OpenCV REQUIRED COMPONENTS ${GPU_OPENCV_COMPONENTS} CONFIG
-        PATHS "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/share/opencv4"
-        NO_DEFAULT_PATH
-    )
-elseif(NOT OpenCV_FOUND)
-    message(FATAL_ERROR "OpenCV components ${GPU_OPENCV_COMPONENTS} are required.")
+if (NOT OpenCV_FOUND)
+    message(FATAL_ERROR "OpenCV not found")
 endif()
-
+message(STATUS "Found OpenCV version: ${OpenCV_VERSION}")
 add_subdirectory(source)
