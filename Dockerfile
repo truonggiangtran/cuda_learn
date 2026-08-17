@@ -21,7 +21,6 @@ RUN test -f image/frame_6506.raw \
     && cmake -S . -B build \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}" \
-        -DENABLE_BLACKWELL_ARCH=OFF \
         -DBUILD_CAMERA_CONTROL=OFF \
     && cmake --build build --parallel \
     && cmake --install build

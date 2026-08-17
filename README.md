@@ -73,7 +73,6 @@ COPY image ./image
 RUN cmake -S . -B build \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}" \
-        -DENABLE_BLACKWELL_ARCH=OFF \
         -DBUILD_CAMERA_CONTROL=OFF \
     && cmake --build build --parallel \
     && cmake --install build
@@ -85,7 +84,7 @@ The installed program runs automatically when the container starts:
 ENTRYPOINT ["/usr/local/bin/main"]
 ```
 
-Architecture `120` targets Blackwell GPUs such as the RTX 5070.
+Architecture `120` targets Blackwell GPUs such as the RTX50 Generation.
 
 ### Compose configuration
 

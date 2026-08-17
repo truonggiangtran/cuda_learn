@@ -19,7 +19,6 @@ set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
-option(ENABLE_BLACKWELL_ARCH "Build CUDA kernels for Blackwell GPUs (sm_120)" ON)
 option(BUILD_CAMERA_CONTROL "Build the optional OpenCV camera wrapper" OFF)
 
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
