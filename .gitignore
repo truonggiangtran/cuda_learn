@@ -4,7 +4,6 @@
 *.ptx
 *.cubin
 *.fatbin
+*.png
 build/
-image/ir_image.*
-image/rgb_image.*
 vcpkg_installed/

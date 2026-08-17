@@ -1,12 +1,12 @@
 # CUDA Image Processing
 
-A Windows- and Linux-compatible C++17/CUDA project that processes a bundled RAW10 camera frame on the GPU. The `main` executable extracts IR and colour channels, interpolates and combines them into an RGB image, applies per-channel gains, and writes PNG outputs.
+A Linux C++17/CUDA project that processes a bundled RAW10 camera frame on the GPU. The `main` executable extracts IR and colour channels, interpolates and combines them into an RGB image, applies per-channel gains, and writes PNG outputs.
 
 ## Features
 
 - CUDA RAW10 processing for the bundled 2592 × 1944 frame
 - GPU kernels for green, red/blue, and IR extraction; convolution; bilinear interpolation; RGB composition; and gain adjustment
-- PNG output through Windows Imaging Component (WIC) on Windows and OpenCV on Linux
+- PNG output through OpenCV
 
 ## RAW10 pixel format
 
@@ -47,88 +47,75 @@ flowchart TD
 
 ## Requirements
 
-- Windows or Linux
-- CMake 3.18 or later
-- A C++17-capable compiler (Visual Studio/MSVC on Windows, GCC or Clang on Linux)
-- CUDA Toolkit and a CUDA-capable NVIDIA GPU
-- [vcpkg](https://github.com/microsoft/vcpkg) with the manifest dependencies installed
+- Docker Desktop or Docker Engine
+- NVIDIA GPU container support
+- `image/frame_6506.raw`
 
-The project uses the vcpkg toolchain automatically when the `VCPKG_ROOT` environment variable is set. `vcpkg.json` installs the OpenCV 4 PNG support used by Linux builds.
+## Docker
 
-By default, CUDA targets are compiled for Blackwell (`sm_120`). Blackwell GeForce GPUs, including the RTX 5070, require CUDA Toolkit 12.8 or later; CUDA 13.3 is supported. For another supported GPU architecture, disable that option and specify your architecture during configuration.
+Build and run from the repository root. Docker and NVIDIA GPU container support
+must be installed. The local `image/` folder supplies `frame_6506.raw` and
+receives `ir_image.png` and `rgb_image.png`.
 
-## Build
+### Dockerfile configuration
 
-On Windows, in a Developer PowerShell for Visual Studio, configure and build the Debug executable:
+The root [`Dockerfile`](Dockerfile) uses
+`nvidia/cuda:13.3.0-devel-ubuntu24.04`, installs CMake and OpenCV, copies the
+source and input image, builds the program with CMake, and installs it:
 
-```powershell
-$env:VCPKG_ROOT = "C:\path\to\vcpkg"
-cmake -S . -B build
-cmake --build build --config Debug
+```dockerfile
+ARG CUDA_ARCHITECTURES=120
+
+COPY CMakeLists.txt ./
+COPY source ./source
+COPY image ./image
+
+RUN cmake -S . -B build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}" \
+        -DENABLE_BLACKWELL_ARCH=OFF \
+        -DBUILD_CAMERA_CONTROL=OFF \
+    && cmake --build build --parallel \
+    && cmake --install build
 ```
 
-On Linux, use CUDA Toolkit 12.8 or later for Blackwell GPUs. The following selects the CUDA Toolkit installed at `/usr/local/cuda` (CUDA 13.3 in the current development environment), uses vcpkg, and rebuilds CMake's compiler cache:
+The installed program runs automatically when the container starts:
 
-```bash
-export VCPKG_ROOT=/path/to/vcpkg
-export CUDA_HOME=/usr/local/cuda
-export CUDACXX="$CUDA_HOME/bin/nvcc"
-export PATH="$CUDA_HOME/bin:$PATH"
-
-cmake --fresh -S . -B build \
-  -DCMAKE_BUILD_TYPE=Debug \
-  -DCMAKE_CUDA_COMPILER:FILEPATH="$CUDACXX" \
-  -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
-cmake --build build --parallel
+```dockerfile
+ENTRYPOINT ["/usr/local/bin/main"]
 ```
 
-CMake detects the target platform automatically. It links Windows Imaging Component and Shell APIs on Windows, and OpenCV's PNG encoder on Linux. CMake caches its CUDA compiler per build directory; use `--fresh` whenever changing CUDA versions. Confirm the selected compiler with `rg 'CMAKE_CUDA_COMPILER' build/CMakeCache.txt`.
+Architecture `120` targets Blackwell GPUs such as the RTX 5070.
 
-For a non-Blackwell GPU on Linux, use a CUDA architecture appropriate for your hardware:
+### Compose configuration
 
-```bash
-cmake --fresh -S . -B build \
-  -DCMAKE_CUDA_COMPILER:FILEPATH="$CUDACXX" \
-  -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-  -DENABLE_BLACKWELL_ARCH=OFF \
-  -DCMAKE_CUDA_ARCHITECTURES=<architecture>
-cmake --build build --parallel
+Before running, check [`compose.yaml`](compose.yaml):
+
+```yaml
+services:
+  image-processing:
+    build:
+      context: .
+      args:
+        CUDA_ARCHITECTURES: "120"
+    image: cuda-image-processing
+    gpus: all
+    volumes:
+      - type: bind
+        source: ./image
+        target: /app/image
 ```
 
-For example, replace `<architecture>` with `86` for an Ampere RTX 30-series GPU. An RTX 5070 uses architecture `120`; keep the default `ENABLE_BLACKWELL_ARCH=ON` and ensure `nvcc --version` reports CUDA 12.8 or later. On Windows, add the same two architecture definitions to the first CMake configuration command. If CMake cannot locate MSVC, run `vcvars64.bat` from the Visual Studio Build Tools installation before configuring.
+Change `CUDA_ARCHITECTURES` for a different GPU and change `source` if the host
+image folder is not `./image`.
 
-## Run
+### Build and run
 
-Run the program from the repository root so it can locate `image/frame_6506.raw`:
+The same command works in Command Prompt, PowerShell, and Linux Bash:
 
-```powershell
-.\build\source\Debug\main.exe
+```text
+docker compose up --build
 ```
-
-On Linux (with a single-config generator):
-
-```bash
-./build/source/main
-```
-
-Optional arguments set red, green, and blue gains:
-
-```powershell
-.\build\source\Debug\main.exe <redGain> <greenGain> <blueGain>
-```
-
-For example:
-
-```powershell
-.\build\source\Debug\main.exe 1.1 1.0 0.9
-```
-
-The program prints GPU information and per-kernel timings, then creates:
-
-- `image/ir_image.png` — 1296 × 972 grayscale IR image
-- `image/rgb_image.png` — 2592 × 1944 RGB image
-
-On Windows, it also asks the operating system to open both files with their default associated application.
 
 ## Project layout
 

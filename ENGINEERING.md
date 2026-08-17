@@ -2,7 +2,6 @@
 
 ## Testing
 
-- On Windows, if CMake cannot locate MSVC, run `vcvars64.bat` first. It is located in `C:\Program Files (x86)\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build` and only needs to run once per terminal session.
 - On Linux, select the intended CUDA compiler before configuring: `export CUDACXX=/usr/local/cuda/bin/nvcc`. Run CMake with `--fresh` when changing CUDA versions, because CMake caches the CUDA compiler per build directory.
 - For Blackwell GPUs such as the RTX 5070, verify `nvcc --version` reports CUDA Toolkit 12.8 or later before configuring with the default `sm_120` architecture.
 - Configure Linux builds with the vcpkg toolchain and compile with `cmake --build build --parallel`.

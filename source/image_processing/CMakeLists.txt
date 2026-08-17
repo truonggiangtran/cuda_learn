@@ -16,13 +16,6 @@ if(ENABLE_BLACKWELL_ARCH)
     )
 endif()
 
-if(MSVC AND ENABLE_MSVC_DEBUG)
-    target_compile_options(image_processing PRIVATE
-        $<$<COMPILE_LANGUAGE:CUDA>:$<$<CONFIG:Debug>:-G>>
-        $<$<COMPILE_LANGUAGE:CUDA>:$<$<CONFIG:RelWithDebInfo,Release>:-lineinfo>>
-    )
-endif()
-
 set_target_properties(image_processing PROPERTIES
     CUDA_SEPARABLE_COMPILATION ON
     CUDA_RESOLVE_DEVICE_SYMBOLS ON

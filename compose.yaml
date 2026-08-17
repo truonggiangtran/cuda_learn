@@ -1,0 +1,12 @@
+services:
+  image-processing:
+    build:
+      context: .
+      args:
+        CUDA_ARCHITECTURES: "120"
+    image: cuda-image-processing
+    gpus: all
+    volumes:
+      - type: bind
+        source: ./image
+        target: /app/image
