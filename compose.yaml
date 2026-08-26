@@ -10,3 +10,6 @@ services:
       - type: bind
         source: ./image
         target: /app/image
+      - type: bind
+        source: ./reports
+        target: /app/reports

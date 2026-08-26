@@ -25,4 +25,4 @@ RUN test -f image/frame_6506.raw \
     && cmake --build build --parallel \
     && cmake --install build
 
-ENTRYPOINT ["/usr/local/bin/main"]
+CMD ["/usr/local/bin/main"]

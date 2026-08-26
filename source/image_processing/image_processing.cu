@@ -19,12 +19,12 @@ __device__ inline T clamp(T value, T minVal, T maxVal) {
 template <typename T, typename... Args>
 __host__ void cudaMethodRunner(const char* methodName, T kernelFunc, dim3 gridDim, dim3 blockDim, Args&&... args) {
     cudaError_t err = cudaSuccess;
-    cudaEvent_t startEvent, stopEvent;
+    // cudaEvent_t startEvent, stopEvent;
 
-    cudaEventCreate(&startEvent);
-    cudaEventCreate(&stopEvent);
+    // cudaEventCreate(&startEvent);
+    // cudaEventCreate(&stopEvent);
 
-    cudaEventRecord(startEvent, 0);
+    // cudaEventRecord(startEvent, 0);
     kernelFunc<<<gridDim, blockDim>>>(std::forward<decltype(args)>(args)...);
     err = cudaGetLastError();
     if (err != cudaSuccess) {
@@ -32,27 +32,11 @@ __host__ void cudaMethodRunner(const char* methodName, T kernelFunc, dim3 gridDi
         exit(EXIT_FAILURE);
     }
 
-    cudaEventRecord(stopEvent, 0);
-    cudaEventSynchronize(stopEvent);
-    float milliseconds = 0;
-    cudaEventElapsedTime(&milliseconds, startEvent, stopEvent);
-    printf("%s kernel execution time: %.3f ms\n", methodName, milliseconds);
-}
-
-__host__ void cudaMemoryDebug(const unsigned char *devicePtr, size_t size, const char* varName) {
-    unsigned char* hostBuffer = new unsigned char[size];
-    cudaError_t err = cudaMemcpy(hostBuffer, devicePtr, size, cudaMemcpyDeviceToHost);
-    if (err != cudaSuccess) {
-        fprintf(stderr, "Failed to copy %s from device to host (error code %s)!\n", varName, cudaGetErrorString(err));
-        delete[] hostBuffer;
-        exit(EXIT_FAILURE);
-    }
-    printf("data of %s:\n", varName);
-    for (size_t i = 2592; i < 2642; ++i) {
-        printf("%02X ", hostBuffer[i]);
-    }
-    printf("\n");
-    delete[] hostBuffer;
+    // cudaEventRecord(stopEvent, 0);
+    // cudaEventSynchronize(stopEvent);
+    // float milliseconds = 0;
+    // cudaEventElapsedTime(&milliseconds, startEvent, stopEvent);
+    // printf("%s kernel execution time: %.3f ms\n", methodName, milliseconds);
 }
 
 __global__ void greenExtract_kernel(const unsigned char* raw10, unsigned char* gImage, int width, int height, int stride) {
