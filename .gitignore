@@ -7,3 +7,8 @@
 *.png
 build/
 vcpkg_installed/
+reports/*.csv
+reports/*.ncu-rep
+reports/*.nsys-rep
+reports/*.sqlite
+*.pyc

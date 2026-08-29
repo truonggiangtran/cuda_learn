@@ -225,7 +225,7 @@ void checkCudaError(cudaError_t err, const char* msg) {
     }
 }
 
-void image_processing(unsigned char* tempBuffer, int width, int height, int stride, unsigned char* irImage, unsigned char* rgbImage, float rGain, float gGain, float bGain) {
+void image_processing(unsigned char* tempBuffer, int width, int height, int stride, unsigned char* irImage, unsigned char* rgbImage, float rGain, float gGain, float bGain, bool verbose) {
     cudaError_t err = cudaSuccess;
     constexpr int blockDimX = 16;
     constexpr int blockDimY = 16;
@@ -272,7 +272,9 @@ void image_processing(unsigned char* tempBuffer, int width, int height, int stri
     err = cudaMemcpy(d_kernelMat, kernelMat, sizeof(kernelMat), cudaMemcpyHostToDevice);
     checkCudaError(err, "Failed to copy kernel matrix to device");
 
-    printf("Grid Size: (%d, %d), Block Size: (%d, %d)\n", gridSizeX, gridSizeY, blockDimX, blockDimY);
+    if (verbose) {
+        printf("Grid Size: (%d, %d), Block Size: (%d, %d)\n", gridSizeX, gridSizeY, blockDimX, blockDimY);
+    }
 
     cudaMethodRunner("Green Extraction", greenExtract_kernel, dim3(gridSizeX, gridSizeY), dim3(blockDimX, blockDimY),
                         d_tempBuffer, d_gImage, width, height, stride);
@@ -315,4 +317,5 @@ void image_processing(unsigned char* tempBuffer, int width, int height, int stri
     cudaFree(d_resized_rImage);
     cudaFree(d_resized_bImage);
     cudaFree(d_rgbImage);
+    cudaFree(d_kernelMat);
 }

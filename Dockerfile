@@ -9,6 +9,7 @@ RUN apt-get update \
         build-essential \
         cmake \
         libopencv-dev \
+        python3 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -16,6 +17,7 @@ WORKDIR /app
 COPY CMakeLists.txt ./
 COPY source ./source
 COPY image ./image
+COPY tools ./tools
 
 RUN test -f image/frame_6506.raw \
     && cmake -S . -B build \
