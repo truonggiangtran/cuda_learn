@@ -1,7 +1,5 @@
 FROM nvidia/cuda:13.3.0-devel-ubuntu24.04
 
-ARG CUDA_ARCHITECTURES=120
-
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update \
