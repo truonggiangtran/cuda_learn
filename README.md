@@ -51,11 +51,55 @@ flowchart TD
 - NVIDIA GPU container support
 - `image/frame_6506.raw`
 
-## Docker
+## Run the program
 
-Build and run from the repository root. Docker and NVIDIA GPU container support
-must be installed. The local `image/` folder supplies `frame_6506.raw` and
-receives `ir_image.png` and `rgb_image.png`.
+Run all commands from the repository root. The supported workflow uses Docker so
+the CUDA compiler, runtime, and OpenCV version remain consistent.
+
+The default Compose configuration targets CUDA architecture `120`, used by
+Blackwell GPUs such as the RTX 50 series. For another GPU, update
+`CUDA_ARCHITECTURES` in [`compose.yaml`](compose.yaml) before building.
+
+### 1. Build the image
+
+```text
+docker compose build
+```
+
+Rebuild after changing C++, CUDA, CMake, or Docker configuration.
+
+### 2. Verify GPU access
+
+```text
+docker compose run --rm --entrypoint nvidia-smi image-processing
+```
+
+This command must show the host NVIDIA GPU. If it fails, configure NVIDIA GPU
+container support before running the application.
+
+### 3. Process the sample frame
+
+Ensure `image/frame_6506.raw` exists, then run:
+
+```text
+docker compose run --rm app
+```
+
+The program processes the bundled 2592 x 1944 RAW10 frame and writes these files
+to the host `image/` directory:
+
+- `image/ir_image.png`
+- `image/rgb_image.png`
+
+The default red, green, and blue gains are all `1.0`. To provide custom gains:
+
+```text
+docker compose run --rm app 1.2 1.0 0.9
+```
+
+The positional values are `rGain gGain bGain`.
+
+## Docker configuration
 
 ### Dockerfile configuration
 
@@ -78,10 +122,10 @@ RUN cmake -S . -B build \
     && cmake --install build
 ```
 
-The installed program runs automatically when the container starts:
+The installed program is the image's default command:
 
 ```dockerfile
-ENTRYPOINT ["/usr/local/bin/main"]
+CMD ["/usr/local/bin/main"]
 ```
 
 Architecture `120` targets Blackwell GPUs such as the RTX50 Generation.
@@ -103,18 +147,13 @@ services:
       - type: bind
         source: ./image
         target: /app/image
+      - type: bind
+        source: ./reports
+        target: /app/reports
 ```
 
 Change `CUDA_ARCHITECTURES` for a different GPU and change `source` if the host
 image folder is not `./image`.
-
-### Build and run
-
-The same command works in Command Prompt, PowerShell, and Linux Bash:
-
-```text
-docker compose up --build
-```
 
 ## Project layout
 
@@ -125,3 +164,94 @@ source/
   camera_control/             OpenCV camera wrapper (Later expansion to live webcam input)
 image/frame_6506.raw          Sample RAW10 input frame
 ```
+
+## Benchmarking
+
+The repository includes a repeatable CUDA benchmark, Nsight Systems importer,
+optional Nsight Compute importer, and SQLite comparison database.
+
+Build the image before benchmarking, and rebuild it after every code change.
+Keep the GPU, input, build configuration, warmup count, and iteration count
+constant when comparing results.
+
+### Short commands
+
+The application, benchmark, profiler, and comparison tool are named Compose
+services. They all use the same image, so build it once and use these commands:
+
+| Task | Command |
+|---|---|
+| Build or rebuild | `docker compose build` |
+| Run the application | `docker compose run --rm app` |
+| Run the standalone benchmark | `docker compose run --rm benchmark` |
+| Capture an NSYS profile and store it in SQLite | `docker compose run --rm profile` |
+| Compare stored runs | `docker compose run --rm compare` |
+
+There are no separate normal, benchmark, or comparison images. A single image
+contains all executables and tools, which prevents build settings from drifting
+between variants.
+
+### Quick benchmark
+
+Run the standalone benchmark without creating profiler reports or a database:
+
+```text
+docker compose run --rm benchmark
+```
+
+The command prints one `BENCHMARK_JSON=...` record containing mean, median, p95,
+minimum, maximum, standard deviation, throughput, GPU information, and output
+hashes. The run is marked nondeterministic if its output hashes change between
+measured iterations.
+
+Available options:
+
+```text
+cuda_benchmark [--warmup N] [--iterations N] [--input PATH]
+               [--r-gain N] [--g-gain N] [--b-gain N]
+```
+
+Override the default five warmups and thirty measured iterations by appending
+options to the short command:
+
+```text
+docker compose run --rm benchmark --warmup 10 --iterations 100
+```
+
+### Capture a profiled benchmark
+
+The full capture runs the application once without profiling for trustworthy
+end-to-end timing, then again under Nsight Systems. It imports both results into
+SQLite:
+
+```text
+docker compose run --rm profile
+```
+
+The host `reports/` directory receives:
+
+- `cuda-benchmarks.sqlite`
+- A timestamped report such as `capture-20260830T123456Z.nsys-rep`
+
+The capture label and report filename use the current UTC timestamp, so repeated
+runs do not overwrite earlier reports. After a code change, rebuild the image
+and capture another run with the same benchmark arguments:
+
+```text
+docker compose build
+docker compose run --rm profile
+```
+
+### Compare captured runs
+
+```text
+docker compose run --rm compare
+```
+
+The comparison shows application latency and throughput alongside aggregate
+kernel, memory-copy, and bandwidth measurements. Confirm that output hashes
+match before accepting a performance improvement.
+
+See [`docs/CUDA_BENCHMARKING.md`](docs/CUDA_BENCHMARKING.md) for detailed SQL
+queries, Nsight Compute collection, fair-comparison rules, and possible future
+improvements.
