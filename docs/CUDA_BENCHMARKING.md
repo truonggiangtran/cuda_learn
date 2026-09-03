@@ -124,6 +124,22 @@ The image contains:
 The existing GitHub Actions workflow also verifies that the Docker image builds
 successfully on pushes and pull requests to `master`.
 
+### Short Compose commands
+
+The named services use the same image and provide a short interface for the
+common workflow:
+
+| Task | Command |
+|---|---|
+| Run the application | `docker compose run --rm app` |
+| Run the standalone benchmark | `docker compose run --rm benchmark` |
+| Capture NSYS and store the run in SQLite | `docker compose run --rm profile` |
+| Compare stored runs | `docker compose run --rm compare` |
+
+The `profile` service generates a UTC timestamp for both the run label and NSYS
+report filename. Explicit `cuda_bench.py` options remain available for custom
+labels, report paths, commands, and iteration counts.
+
 ## Preflight
 
 Start Docker Desktop, then verify GPU and tools:
@@ -140,18 +156,10 @@ policy, clocks, thermals, driver, input, and container limits stable.
 
 ## Capture a benchmark
 
-From repository root in PowerShell:
+From the repository root:
 
-```powershell
-$commit = git rev-parse HEAD
-
-docker compose run --rm --entrypoint python3 image-processing `
-  /app/tools/cuda_bench.py capture `
-  --db /app/reports/cuda-benchmarks.sqlite `
-  --report /app/reports/baseline.nsys-rep `
-  --label baseline `
-  --commit $commit `
-  -- /usr/local/bin/cuda_benchmark --warmup 5 --iterations 30
+```text
+docker compose run --rm profile
 ```
 
 The capture command performs two runs:
@@ -161,48 +169,34 @@ The capture command performs two runs:
 
 Generated files appear in host `reports/` through the Compose bind mount.
 
-Use a meaningful label for every code or configuration change:
+By default, the run receives a label and filename like:
 
 ```text
-baseline
-combine-balance-fused
-block-32x8
-shared-memory-convolution
+capture-20260830T123456Z
+capture-20260830T123456Z.nsys-rep
 ```
+
+Use the explicit `cuda_bench.py capture` interface when a meaningful label,
+fixed report path, commit, notes, or custom benchmark command is required.
 
 ### Capture baseline and candidate
 
 Baseline:
 
-```powershell
-$commit = git rev-parse HEAD
-
-docker compose run --rm --entrypoint python3 image-processing `
-  /app/tools/cuda_bench.py capture `
-  --db /app/reports/cuda-benchmarks.sqlite `
-  --report /app/reports/baseline.nsys-rep `
-  --label baseline `
-  --commit $commit `
-  -- /usr/local/bin/cuda_benchmark --warmup 5 --iterations 50
+```text
+docker compose run --rm profile
 ```
 
 Make one code or configuration change, rebuild, then capture candidate:
 
-```powershell
+```text
 docker compose build
-$commit = git rev-parse HEAD
-
-docker compose run --rm --entrypoint python3 image-processing `
-  /app/tools/cuda_bench.py capture `
-  --db /app/reports/cuda-benchmarks.sqlite `
-  --report /app/reports/candidate.nsys-rep `
-  --label candidate `
-  --commit $commit `
-  -- /usr/local/bin/cuda_benchmark --warmup 5 --iterations 50
+docker compose run --rm profile
 ```
 
-Do not compare a 30-iteration baseline with a 5-iteration candidate. Keep all
-arguments identical except the single variable being tested.
+The short profile service uses five warmups and thirty measured iterations for
+both captures. Keep all benchmark arguments identical except the single
+variable being tested.
 
 ## Import an existing NSYS report
 
@@ -247,10 +241,8 @@ On Windows/WSL this setting is controlled through NVIDIA Control Panel.
 
 ## Compare runs
 
-```powershell
-docker compose run --rm --entrypoint python3 image-processing `
-  /app/tools/cuda_bench.py compare `
-  --db /app/reports/cuda-benchmarks.sqlite
+```text
+docker compose run --rm compare
 ```
 
 Example columns:

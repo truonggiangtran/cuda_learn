@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import datetime as dt
 import pathlib
 import tempfile
 import unittest
@@ -26,6 +27,29 @@ class CudaBenchTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.connection.close()
         self.temp_dir.cleanup()
+
+    def test_capture_identity_generates_timestamped_defaults(self) -> None:
+        database = pathlib.Path("reports/cuda-benchmarks.sqlite")
+        now = dt.datetime(2026, 8, 30, 12, 34, 56, tzinfo=dt.timezone.utc)
+
+        label, report = cuda_bench.capture_identity(
+            database, None, None, now=now
+        )
+
+        self.assertEqual("capture-20260830T123456Z", label)
+        self.assertEqual(
+            pathlib.Path("reports/capture-20260830T123456Z.nsys-rep"), report
+        )
+
+    def test_capture_identity_preserves_explicit_values(self) -> None:
+        label, report = cuda_bench.capture_identity(
+            pathlib.Path("reports/cuda-benchmarks.sqlite"),
+            "baseline",
+            "custom/baseline.nsys-rep",
+        )
+
+        self.assertEqual("baseline", label)
+        self.assertEqual(pathlib.Path("custom/baseline.nsys-rep"), report)
 
     def test_imports_nsys_timing_summary(self) -> None:
         output = """Processing report...\n\"Time (%)\",\"Total Time (ns)\",\"Instances\",\"Avg (ns)\",\"Med (ns)\",\"Min (ns)\",\"Max (ns)\",\"StdDev (ns)\",\"Name\"\n28.9,96708,2,48354,48000,47000,49708,1354,\"combine_rgb_kernel(unsigned char*, int)\"\n"""

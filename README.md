@@ -82,7 +82,7 @@ container support before running the application.
 Ensure `image/frame_6506.raw` exists, then run:
 
 ```text
-docker compose run --rm image-processing
+docker compose run --rm app
 ```
 
 The program processes the bundled 2592 x 1944 RAW10 frame and writes these files
@@ -94,7 +94,7 @@ to the host `image/` directory:
 The default red, green, and blue gains are all `1.0`. To provide custom gains:
 
 ```text
-docker compose run --rm --entrypoint /usr/local/bin/main image-processing 1.2 1.0 0.9
+docker compose run --rm app 1.2 1.0 0.9
 ```
 
 The positional values are `rGain gGain bGain`.
@@ -174,12 +174,29 @@ Build the image before benchmarking, and rebuild it after every code change.
 Keep the GPU, input, build configuration, warmup count, and iteration count
 constant when comparing results.
 
+### Short commands
+
+The application, benchmark, profiler, and comparison tool are named Compose
+services. They all use the same image, so build it once and use these commands:
+
+| Task | Command |
+|---|---|
+| Build or rebuild | `docker compose build` |
+| Run the application | `docker compose run --rm app` |
+| Run the standalone benchmark | `docker compose run --rm benchmark` |
+| Capture an NSYS profile and store it in SQLite | `docker compose run --rm profile` |
+| Compare stored runs | `docker compose run --rm compare` |
+
+There are no separate normal, benchmark, or comparison images. A single image
+contains all executables and tools, which prevents build settings from drifting
+between variants.
+
 ### Quick benchmark
 
 Run the standalone benchmark without creating profiler reports or a database:
 
 ```text
-docker compose run --rm --entrypoint /usr/local/bin/cuda_benchmark image-processing --warmup 5 --iterations 30
+docker compose run --rm benchmark
 ```
 
 The command prints one `BENCHMARK_JSON=...` record containing mean, median, p95,
@@ -194,6 +211,13 @@ cuda_benchmark [--warmup N] [--iterations N] [--input PATH]
                [--r-gain N] [--g-gain N] [--b-gain N]
 ```
 
+Override the default five warmups and thirty measured iterations by appending
+options to the short command:
+
+```text
+docker compose run --rm benchmark --warmup 10 --iterations 100
+```
+
 ### Capture a profiled benchmark
 
 The full capture runs the application once without profiling for trustworthy
@@ -201,27 +225,27 @@ end-to-end timing, then again under Nsight Systems. It imports both results into
 SQLite:
 
 ```text
-docker compose run --rm --entrypoint python3 image-processing /app/tools/cuda_bench.py capture --db /app/reports/cuda-benchmarks.sqlite --report /app/reports/baseline.nsys-rep --label baseline -- /usr/local/bin/cuda_benchmark --warmup 5 --iterations 30
+docker compose run --rm profile
 ```
 
 The host `reports/` directory receives:
 
 - `cuda-benchmarks.sqlite`
-- `baseline.nsys-rep`
+- A timestamped report such as `capture-20260830T123456Z.nsys-rep`
 
-Use a unique report filename and meaningful label for each experiment. After a
-code change, rebuild the image and capture a candidate with the same benchmark
-arguments:
+The capture label and report filename use the current UTC timestamp, so repeated
+runs do not overwrite earlier reports. After a code change, rebuild the image
+and capture another run with the same benchmark arguments:
 
 ```text
 docker compose build
-docker compose run --rm --entrypoint python3 image-processing /app/tools/cuda_bench.py capture --db /app/reports/cuda-benchmarks.sqlite --report /app/reports/candidate.nsys-rep --label candidate -- /usr/local/bin/cuda_benchmark --warmup 5 --iterations 30
+docker compose run --rm profile
 ```
 
 ### Compare captured runs
 
 ```text
-docker compose run --rm --entrypoint python3 image-processing /app/tools/cuda_bench.py compare --db /app/reports/cuda-benchmarks.sqlite
+docker compose run --rm compare
 ```
 
 The comparison shows application latency and throughput alongside aggregate

@@ -1,15 +1,52 @@
+x-image-processing: &image-processing
+  build:
+    context: .
+    args:
+      CUDA_ARCHITECTURES: "120"
+  image: cuda-image-processing
+  volumes:
+    - type: bind
+      source: ./image
+      target: /app/image
+    - type: bind
+      source: ./reports
+      target: /app/reports
+
 services:
   image-processing:
-    build:
-      context: .
-      args:
-        CUDA_ARCHITECTURES: "120"
-    image: cuda-image-processing
+    <<: *image-processing
     gpus: all
-    volumes:
-      - type: bind
-        source: ./image
-        target: /app/image
-      - type: bind
-        source: ./reports
-        target: /app/reports
+
+  app:
+    <<: *image-processing
+    profiles: [tools]
+    gpus: all
+    entrypoint: [/usr/local/bin/main]
+    command: []
+
+  benchmark:
+    <<: *image-processing
+    profiles: [tools]
+    gpus: all
+    entrypoint: [/usr/local/bin/cuda_benchmark]
+    command: [--warmup, "5", --iterations, "30"]
+
+  profile:
+    <<: *image-processing
+    profiles: [tools]
+    gpus: all
+    entrypoint: [python3, /app/tools/cuda_bench.py]
+    command:
+      - capture
+      - --
+      - /usr/local/bin/cuda_benchmark
+      - --warmup
+      - "5"
+      - --iterations
+      - "30"
+
+  compare:
+    <<: *image-processing
+    profiles: [tools]
+    entrypoint: [python3, /app/tools/cuda_bench.py]
+    command: [compare]

@@ -83,6 +83,24 @@ def utc_now() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
 
 
+def capture_identity(
+    database: pathlib.Path,
+    label: str | None,
+    report: str | None,
+    *,
+    now: dt.datetime | None = None,
+) -> tuple[str, pathlib.Path]:
+    timestamp = now or dt.datetime.now(dt.timezone.utc)
+    generated_label = timestamp.strftime("capture-%Y%m%dT%H%M%SZ")
+    resolved_label = label or generated_label
+    resolved_report = (
+        pathlib.Path(report)
+        if report
+        else database.parent / f"{generated_label}.nsys-rep"
+    )
+    return resolved_label, resolved_report
+
+
 def connect_database(path: pathlib.Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(path)
@@ -768,12 +786,13 @@ def capture_command(args: argparse.Namespace) -> int:
 
     unprofiled = run_process(command)
     payload = parse_benchmark_payload(unprofiled.stdout)
-    report = pathlib.Path(args.report)
+    database = pathlib.Path(args.db)
+    label, report = capture_identity(database, args.label, args.report)
 
-    with connect_database(pathlib.Path(args.db)) as connection:
+    with connect_database(database) as connection:
         run_id = create_run(
             connection,
-            label=args.label,
+            label=label,
             status="capturing",
             command=command,
             report_path=str(report),
@@ -1041,8 +1060,12 @@ def build_parser() -> argparse.ArgumentParser:
         "capture", help="Run benchmark, capture NSYS report, and store metrics"
     )
     capture.add_argument("--db", default="reports/cuda-benchmarks.sqlite")
-    capture.add_argument("--report", required=True)
-    capture.add_argument("--label", required=True)
+    capture.add_argument(
+        "--report", help="NSYS output path; defaults to a timestamped report"
+    )
+    capture.add_argument(
+        "--label", help="Run label; defaults to the capture timestamp"
+    )
     capture.add_argument("--notes")
     capture.add_argument("--commit")
     capture.add_argument("--nsys", default="nsys")
